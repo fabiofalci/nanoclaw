@@ -1,4 +1,6 @@
+import { execFile } from 'child_process';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 
 import {
@@ -536,6 +538,51 @@ async function main(): Promise<void> {
     }
   }
 
+  // Handle "yt <URL>" command: download video with yt-dlp and send back via WhatsApp
+  async function handleYtDownload(
+    url: string,
+    chatJid: string,
+  ): Promise<void> {
+    const channel = findChannel(channels, chatJid);
+    if (!channel) return;
+
+    const tmpFile = path.join(os.tmpdir(), `nanoclaw-yt-${Date.now()}.mp4`);
+    try {
+      await channel.sendMessage(chatJid, 'Downloading video...');
+      await new Promise<void>((resolve, reject) => {
+        execFile(
+          'yt-dlp',
+          [
+            '-f',
+            'bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4',
+            '-o',
+            tmpFile,
+            url,
+          ],
+          (err, _stdout, stderr) => {
+            if (err) reject(new Error(stderr || err.message));
+            else resolve();
+          },
+        );
+      });
+      if (channel.sendFile) {
+        await channel.sendFile(chatJid, tmpFile, 'video/mp4');
+      } else {
+        await channel.sendMessage(
+          chatJid,
+          'Video downloaded but this channel does not support file sending.',
+        );
+      }
+    } catch (err) {
+      await channel.sendMessage(
+        chatJid,
+        `yt failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    } finally {
+      if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
+    }
+  }
+
   // Channel callbacks (shared by all channels)
   const channelOpts = {
     onMessage: (chatJid: string, msg: NewMessage) => {
@@ -544,6 +591,17 @@ async function main(): Promise<void> {
       if (trimmed === '/remote-control' || trimmed === '/remote-control-end') {
         handleRemoteControl(trimmed, chatJid, msg).catch((err) =>
           logger.error({ err, chatJid }, 'Remote control command error'),
+        );
+        return;
+      }
+
+      // @Name yt <URL> — download video with yt-dlp and send back (owner only)
+      const ytMatch = trimmed.match(
+        new RegExp(`^@${ASSISTANT_NAME}\\s+yt\\s+(\\S+)$`, 'i'),
+      );
+      if (ytMatch && msg.is_from_me) {
+        handleYtDownload(ytMatch[1], chatJid).catch((err) =>
+          logger.error({ err, chatJid }, 'yt download error'),
         );
         return;
       }

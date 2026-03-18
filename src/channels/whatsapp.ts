@@ -276,6 +276,12 @@ export class WhatsAppChannel implements Channel {
     }
   }
 
+  async sendFile(jid: string, filePath: string, mimetype: string, caption?: string): Promise<void> {
+    const buffer = fs.readFileSync(filePath);
+    await this.sock.sendMessage(jid, { video: buffer, mimetype, caption });
+    logger.info({ jid, mimetype }, 'File sent');
+  }
+
   isConnected(): boolean {
     return this.connected;
   }
