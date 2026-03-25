@@ -538,10 +538,7 @@ async function main(): Promise<void> {
   }
 
   // Handle "yt <URL>" command: download video with yt-dlp and send back via WhatsApp
-  async function handleYtDownload(
-    url: string,
-    chatJid: string,
-  ): Promise<void> {
+  async function handleYtDownload(url: string, chatJid: string): Promise<void> {
     const channel = findChannel(channels, chatJid);
     if (!channel) return;
 
@@ -598,7 +595,9 @@ async function main(): Promise<void> {
       const ytMatch = trimmed.match(
         new RegExp(`^@${ASSISTANT_NAME}\\s+yt\\s+(\\S+)$`, 'i'),
       );
-      if (ytMatch && msg.is_from_me) {
+      const isOwner =
+        msg.is_from_me || msg.sender === chatJid.replace(/^tg:/, '');
+      if (ytMatch && isOwner) {
         handleYtDownload(ytMatch[1], chatJid).catch((err) =>
           logger.error({ err, chatJid }, 'yt download error'),
         );
